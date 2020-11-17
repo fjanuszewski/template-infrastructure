@@ -1,0 +1,216 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+- AWS::Serverless-2016-10-31
+
+Description: 'Template de instancias'
+
+
+Resources:
+
+  SNSTopicDefault:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: AlarmTopic
+      Subscription:
+        - Protocol: email
+          Endpoint: fabianj@droptek.com
+        - Protocol: email
+          Endpoint: fabian.januszewski@gmail.com
+
+  CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPU alarm for my instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: cpu_usage_active
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '3'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: cpu
+        Value: cpu-total
+
+  CPUAlarmLower:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPU Lower alarm for my instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: cpu_usage_active
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '3600'
+      EvaluationPeriods: '6'
+      Threshold: '10'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: cpu
+        Value: cpu-total
+
+  MemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Memory alarm for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '3'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+
+  MemoryAlarmLower:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Memory alarm lower for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '3600'
+      EvaluationPeriods: '16'
+      Threshold: '20'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+
+  DiskAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Disk alarm for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '86400'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: path
+        Value: /
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: xfs
+
+  DiskAlarmLower:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Disk lower alarm for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '30'
+      EvaluationPeriods: '3'
+      Threshold: '40'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: path
+        Value: /
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: xfs
+
+
+  DiskAlarm2:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Disk alarm for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '86400'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: path
+        Value: /dev/sdh
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: xfs
+
+  DiskAlarmLower2:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Disk lower alarm for instance
+      AlarmActions:
+      - Ref: SNSTopicDefault
+      MetricName: disk_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '30'
+      EvaluationPeriods: '3'
+      Threshold: '40'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value: i-0b4a40ac91a9967db
+      - Name: ImageId
+        Value: ami-03657b56516ab7912
+      - Name: InstanceType
+        Value: t3.large
+      - Name: path
+        Value: /dev/sdh
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: xfs
+

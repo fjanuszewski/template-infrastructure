@@ -1,0 +1,624 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+- AWS::Serverless-2016-10-31
+
+Description: 'Template de networking para ambiente'
+
+Parameters:
+  SSHLocation:
+    Description: Lockdown SSH access to the bastion host (default can be accessed
+      from anywhere)
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid CIDR range of the form x.x.x.x/x.
+  Customer:
+    Description: Customer Name
+    Type: String
+  NatGateway:
+    Description: NatGateway enabled condition, set false for reduce cost
+    Type: String
+    AllowedValues: 
+      - false
+      - true
+    Default: false
+    ConstraintDescription: Value mus be boolean
+
+Conditions:
+  NatEnabled: 
+    Fn::Equals: [Ref: NatGateway, true]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      CidrBlock: 172.0.0.0/16
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-vpc"
+          
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.0.0/24
+      AvailabilityZone: us-east-2a
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-PublicSubnetA"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.1.0/24
+      AvailabilityZone: us-east-2b
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-PublicSubnetB"
+          
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.2.0/24
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-PrivateSubnetA"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.3.0/24
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-PrivateSubnetB"
+
+  ProtectedSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.4.0/24
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-ProtectedSubnetA"
+
+  ProtectedSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 172.0.5.0/24
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-ProtectedSubnetB"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-igw"
+        
+  GatewayToInternet:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+        
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-rt-public"
+          
+  ProtectedRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-rt-protected"
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Private
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-rt-private"
+
+  ProtectedSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: ProtectedSubnetA
+      RouteTableId:
+        Ref: ProtectedRouteTable
+  
+  ProtectedSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: ProtectedSubnetB
+      RouteTableId:
+        Ref: ProtectedRouteTable
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetA
+      RouteTableId:
+        Ref: PublicRouteTable
+  
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetB
+      RouteTableId:
+        Ref: PublicRouteTable
+                
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetA
+      RouteTableId:
+        Ref: PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetB
+      RouteTableId:
+        Ref: PrivateRouteTable
+        
+  PublicNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Network
+        Value: Public
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-acl"
+        
+  InboundHTTPPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '80'
+        To: '80'
+        
+  InboundHTTPSPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '101'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '443'
+        To: '443'
+        
+  InboundSSHPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '102'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock:
+        Ref: SSHLocation
+      PortRange:
+        From: '22'
+        To: '22'
+
+  InboundRDPPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '104'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '3389'
+        To: '3389'
+
+  InboundEphemeralPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '103'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '1024'
+        To: '65535'
+        
+  OutboundPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '0'
+        To: '65535'
+        
+  PublicSubnetANetworkAclAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetA
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+  
+  PublicSubnetBNetworkAclAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetB
+      NetworkAclId:
+        Ref: PublicNetworkAcl
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-websecuritygroup"
+      GroupDescription: "SSH access and http/https"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3389'
+        ToPort: '3389'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3389'
+        ToPort: '3389'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-WebSecurityGroup"
+
+
+  APISecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-apisecuritygroup"
+      GroupDescription: "http/https access"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-APISecurityGroup"
+  
+  ProtectedSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-ProtectedSecurityGroup"
+      GroupDescription: "http/https access from API and WEB"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        SourceSecurityGroupId:
+          Ref: APISecurityGroup
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        SourceSecurityGroupId:
+          Ref: APISecurityGroup
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        SourceSecurityGroupId:
+          Ref: WebSecurityGroup
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        SourceSecurityGroupId:
+          Ref: WebSecurityGroup
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-ProtectedSecurityGroup"
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: APISecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-dbsecuritygroup"
+      GroupDescription: "DB access from protected sg only"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        SourceSecurityGroupId:
+          Ref: ProtectedSecurityGroup
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-DBSecurityGroup"
+  
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription:
+        Fn::Sub: "SubnetGroup for ${Customer} database in ${AWS::StackName}"
+      DBSubnetGroupName:
+        Fn::Sub: "${AWS::StackName}-DBSubnetGroup"
+      SubnetIds: 
+        - 
+          Ref: PrivateSubnetA
+        - 
+          Ref: PrivateSubnetB
+      Tags: 
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+  
+  DefaultProtectedRoute:
+    Type: AWS::EC2::Route
+    Condition: NatEnabled
+    Properties:
+      RouteTableId: 
+        Ref: ProtectedRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: 
+        Ref: NatGateway1
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    Condition: NatEnabled
+    DependsOn: InternetGateway
+    Properties:
+      Domain: vpc
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-NatGateway1EIP"
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Condition: NatEnabled
+    Properties:
+      AllocationId: 
+        Fn::GetAtt: NatGateway1EIP.AllocationId
+      SubnetId: 
+        Ref: PublicSubnetA
+      Tags:
+      - Key: Application
+        Value:
+          Ref: AWS::StackName
+      - Key: Name
+        Value:
+          Fn::Sub: "${AWS::StackName}-NatGateway1"
+  
+Outputs:
+  VPCId:
+    Description: VPCId of the newly created VPC
+    Value:
+      Ref: VPC
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "VPCId"]]
+  PublicSubnetA:
+    Description: SubnetId of the public subnet A
+    Value:
+      Ref: PublicSubnetA
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "PublicSubnetA"]]
+  PublicSubnetB:
+    Description: SubnetId of the public subnet B
+    Value:
+      Ref: PublicSubnetB
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "PublicSubnetB"]]
+  PrivateSubnetA:
+    Description: SubnetId of the private subnet A
+    Value:
+      Ref: PrivateSubnetB
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "PrivateSubnetA"]]
+  PrivateSubnetB:
+    Description: SubnetId of the private subnet B
+    Value:
+      Ref: PrivateSubnetB
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "PrivateSubnetB"]]
+  ProtectedSubnetA:
+    Description: SubnetId of the Protected subnet A
+    Value:
+      Ref: ProtectedSubnetA
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "ProtectedSubnetA"]]
+  ProtectedSubnetB:
+    Description: SubnetId of the Protected subnet B
+    Value:
+      Ref: ProtectedSubnetB
+    Export:
+      Name: 
+        Fn::Join: ["-", [Ref: AWS::StackName, "ProtectedSubnetB"]]
+

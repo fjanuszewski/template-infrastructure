@@ -1,0 +1,401 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+- AWS::Serverless-2016-10-31
+
+Description: 'Template de instancias'
+
+Parameters:
+  PublicSubnet:
+    Description: Public subnet for Serrver
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: must be the name of an existing SubnetId.
+  Ec2SecurityGroup:
+    Description: SecurityGroup for EC2
+    Type: AWS::EC2::SecurityGroup::Id
+    ConstraintDescription: must be the name of an existing SecurityGroup.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the server
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  InstanceType:
+    Description: Server EC2 instance type
+    Type: String
+    Default: t3.large
+    AllowedValues:
+    - t3.small
+    - t3.medium
+    - t3.large
+    ConstraintDescription: must be a valid EC2 instance type.
+  ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base
+    ConstraintDescription: must be a valid AMI Id.
+  EBS:
+    Description: EBS For EC2
+    Type: String
+    Default: ""
+  Project:
+    Description: Project name
+    Type: String
+    
+Conditions: 
+  ConditionAttachEBS: 
+    Fn::Not: [Fn::Equals: [Ref: EBS, ""]]
+
+Resources:
+
+  AtachVolume:
+    Type: AWS::EC2::VolumeAttachment
+    Condition: ConditionAttachEBS
+    Properties:
+      Tags: 
+      - Key: "Name"
+        Value: 
+          Fn::Sub: "${AWS::StackName}-EBS"
+      - Key: "StackName"
+        Value: 
+          Fn::Sub: "${AWS::StackName}" 
+      - Key: "LifecyclePolicy"
+        Value: DAY09H
+      Device: /dev/sdd
+      InstanceId: 
+        Ref: EC2Instance
+      VolumeId: 
+        Ref: EBS
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 00_setupCfnHup
+            - 01_CfnHup_service
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        00_setupCfnHup:
+          files:
+            "c:\\cfn\\cfn-hup.conf":
+              content: 
+                Fn::Sub: |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+                  interval=1
+            "c:\\cfn\\hooks.d\\amazon-cloudwatch-agent-auto-reloader.conf":
+              content: 
+                Fn::Sub: |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                  action=cfn-init.exe -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region} --configsets UpdateEnvironment
+        01_CfnHup_service:
+          services:
+            windows:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - "c:\\cfn\\cfn-hup.conf"
+                  - "c:\\cfn\\hooks.d\\cfn-auto-reloader.conf"
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "C:\\ProgramData\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent.json":
+              content: 
+                Fn::Sub: |
+                  {
+                    "metrics": {
+                      "append_dimensions": {
+                        "AutoScalingGroupName": "${!aws:AutoScalingGroupName}",
+                        "ImageId": "${!aws:ImageId}",
+                        "InstanceId": "${!aws:InstanceId}",
+                        "InstanceType": "${!aws:InstanceType}"
+                      },
+                      "metrics_collected": {
+                        "Memory": {
+                          "measurement": [
+                            "% Committed Bytes In Use",
+                            "Available MBytes"
+                          ],
+                          "metrics_collection_interval": 60
+                        },
+                        "Paging File": {
+                          "measurement": [
+                            "% Usage"
+                          ],
+                          "metrics_collection_interval": 60,
+                          "resources": [
+                            "*"
+                          ]
+                        },
+                        "LogicalDisk": {
+                          "measurement": [
+                              "% Free Space",
+                              "Free Megabytes"
+                          ],
+                          "metrics_collection_interval": 60,
+                          "resources": [
+                            "*"
+                          ]
+                        },
+                        "Processor": {
+                          "measurement": [
+                            "% User Time",
+                            "% Idle Time",
+                            "% Interrupt Time"
+                          ],
+                          "metrics_collection_interval": 60,
+                          "resources": [
+                            "_Total"
+                          ]
+                        }
+                      }
+                    }
+                  }
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: powershell -Command "C:\\'Program Files'\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1 -a stop"
+            02_start_service:
+              command: powershell -Command "C:\\'Program Files'\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1 -a fetch-config -m ec2 -c file:C:\\ProgramData\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent.json -s"
+    Properties:
+      Tags: 
+      - Key: "Name"
+        Value: 
+          Fn::Sub: "${AWS::StackName}-server"
+      - Key: "StackName"
+        Value: 
+          Fn::Sub: "${AWS::StackName}" 
+      KeyName:
+        Ref: KeyName
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      UserData: 
+        Fn::Base64: 
+          Fn::Sub: |
+            <script>
+            mkdir C:\Downloads\Amazon\AmazonCloudWatchAgent
+            powershell -Command "(New-Object Net.WebClient).DownloadFile('https://s3.amazonaws.com/amazoncloudwatch-agent/windows/amd64/latest/amazon-cloudwatch-agent.msi','C:\Downloads\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent.msi')"
+            C:\Downloads\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent.msi
+            cfn-init.exe -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region} --configsets default
+            cfn-signal.exe -e %errorlevel% --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+            
+            $AWS_AVAIL_ZONE=(curl http://169.254.169.254/latest/meta-data/placement/availability-zone).Content
+            $AWS_REGION=$AWS_AVAIL_ZONE.Substring(0,$AWS_AVAIL_ZONE.length-1)
+            $AWS_INSTANCE_ID=(curl http://169.254.169.254/latest/meta-data/instance-id).Content
+            $ROOT_VOLUME_IDS=((Get-EC2Instance -Region $AWS_REGION -InstanceId $AWS_INSTANCE_ID).Instances.BlockDeviceMappings | where-object DeviceName -match '/dev/sda1').Ebs.VolumeId
+            $tag = New-Object Amazon.EC2.Model.Tag
+            $tag.key = "LifecyclePolicy"
+            $tag.value = "DAY09H"
+            New-EC2Tag -Resource $ROOT_VOLUME_IDS -Region $AWS_REGION -Tag $tag
+            </script>
+      InstanceType:
+        Ref: InstanceType
+      ImageId:
+        Ref: ami
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 80
+            DeleteOnTermination: true
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "true"
+        DeviceIndex: "0"
+        GroupSet: 
+          - Ref: Ec2SecurityGroup
+        SubnetId: 
+          Ref: PublicSubnet
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: "PT15M"
+        
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: "${AWS::StackName}-InstanceRole"
+      Path: "/"
+      Tags: 
+        - Key: "Name"
+          Value: 
+            Fn::Sub: "${AWS::StackName}-InstanceRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: taginstancepolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+              - ec2:Describe*
+              - ec2:CreateTags
+              Resource: "*"
+      - PolicyName: ssminstancepolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - ssmmessages:CreateControlChannel
+            - ssmmessages:CreateDataChannel
+            - ssmmessages:OpenControlChannel
+            - ssmmessages:OpenDataChannel
+            - ssm:UpdateInstanceInformation
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - s3:PutObject
+            Resource: arn:aws:s3:::*
+          - Effect: Allow
+            Action:
+            - s3:GetEncryptionConfiguration
+            Resource: "*"
+          - Effect: Allow
+            Action: kms:GenerateDataKey
+            Resource: "*"
+      - PolicyName: metricsec2
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - cloudwatch:PutMetricdata
+            - cloudwatch:GetMetricStatics
+            - cloudwatch:ListMetrics
+            Resource: "*"
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName:
+        Fn::Sub: "${AWS::StackName}-InstanceProfile"
+      Path: "/"
+      Roles:
+      - Ref: InstanceRole
+
+  LifecycleIamPolicy: 
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: "${AWS::StackName}-LifecycleIamPolicy"
+      Description: "Policy for Lifecycle Management"
+      Path: "/"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - ec2:CreateSnapshot
+          - ec2:CreateSnapshots
+          - ec2:DeleteSnapshot
+          - ec2:DescribeVolumes
+          - ec2:DescribeInstances
+          - ec2:DescribeSnapshots
+          Resource: "*"
+        - Effect: Allow
+          Action:
+          - ec2:CreateTags
+          Resource: arn:aws:ec2:*::snapshot/*
+
+  LifecycleIamRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Tags: 
+      - Key: "Name"
+        Value: 
+          Fn::Sub: "${AWS::StackName}-LifecycleIamRole"
+      - Key: "StackName"
+        Value: 
+          Fn::Sub: "${AWS::StackName}" 
+      ManagedPolicyArns:
+        - Ref: LifecycleIamPolicy
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal: 
+              Service: 
+                - "dlm.amazonaws.com"
+      Path: /
+      RoleName:
+        Fn::Sub: "${AWS::StackName}-LifecycleIamRole"
+
+  LifecyclePolicy:
+    Type: AWS::DLM::LifecyclePolicy
+    Properties:
+      Description: "Lifecycle Policy for DAY09H"
+      State: "ENABLED"
+      ExecutionRoleArn: 
+        Fn::GetAtt: 
+        - LifecycleIamRole
+        - Arn
+      PolicyDetails:
+        ResourceTypes:
+          - "VOLUME"
+        TargetTags:
+          -
+            Key: "LifecyclePolicy"
+            Value: "DAY09H"
+        Schedules:
+          -
+            Name: "Daily Snapshots"
+            TagsToAdd:
+              -
+                Key: "type"
+                Value: "DailySnapshot"
+            CreateRule:
+              Interval: 24
+              IntervalUnit: "HOURS"
+              # UTC The time at which the policy runs are scheduled to start. The first policy run starts within an hour after the scheduled time. 
+              Times:
+                - "15:00"
+            RetainRule:
+              Count: 7
+            CopyTags: true
+
+  EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: EC2Instance
+    Properties: 
+      InstanceId: 
+        Ref: EC2Instance
+      Tags: 
+      - Key: "Name"
+        Value: 
+          Fn::Sub: "${AWS::StackName}-eip"
+      - Key: "StackName"
+        Value: 
+          Fn::Sub: "${AWS::StackName}" 
+          
+Outputs:
+  EIP:
+    Description: EIP for EC2
+    Value:
+      Ref: EIP
+
+
+
