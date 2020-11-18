@@ -31,3 +31,11 @@ Must have installed AWS CLI and SAM. Before install AWS CLI configure the AWS CL
 
 # Usage
 You can either implement the tamplate with your favorite SAM command, or run the **deploy.sh** file. Note that you should replace the variables within the file.
+
+
+# Comming Soon
+- Version in CDK
+- New Alerts
+- Auto Recovery (FT 1-1)
+- Schedulers: Start, shutdown, terminate, create.
+
