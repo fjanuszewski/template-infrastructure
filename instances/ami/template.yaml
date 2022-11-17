@@ -44,10 +44,13 @@ Conditions:
 
 Resources:
 
-  AtachVolume:
-    Type: AWS::EC2::VolumeAttachment
+  Volume:
+    Type: AWS::EC2::Volume
     Condition: ConditionAttachEBS
     Properties:
+      Size: EBS
+      AvailabilityZone: 
+        Fn::GetAtt: Ec2Instance.AvailabilityZone
       Tags: 
       - Key: "Name"
         Value: 
@@ -57,6 +60,12 @@ Resources:
           Fn::Sub: "${AWS::StackName}" 
       - Key: "LifecyclePolicy"
         Value: DAY09H
+    DeletionPolicy: Snapshot
+    
+  AtachVolume:
+    Type: AWS::EC2::VolumeAttachment
+    Condition: ConditionAttachEBS
+    Properties:
       Device: /dev/sdh
       InstanceId: 
         Ref: EC2Instance
@@ -392,25 +401,25 @@ Resources:
               Count: 7
             CopyTags: true
 
-  EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: EC2Instance
-    Properties: 
-      InstanceId: 
-        Ref: EC2Instance
-      Tags: 
-      - Key: "Name"
-        Value: 
-          Fn::Sub: "${AWS::StackName}-eip"
-      - Key: "StackName"
-        Value: 
-          Fn::Sub: "${AWS::StackName}" 
+#   EIP:
+#     Type: AWS::EC2::EIP
+#     DependsOn: EC2Instance
+#     Properties: 
+#       InstanceId: 
+#         Ref: EC2Instance
+#       Tags: 
+#       - Key: "Name"
+#         Value: 
+#           Fn::Sub: "${AWS::StackName}-eip"
+#       - Key: "StackName"
+#         Value: 
+#           Fn::Sub: "${AWS::StackName}" 
           
-Outputs:
-  EIP:
-    Description: EIP for EC2
-    Value:
-      Ref: EIP
+# Outputs:
+#   EIP:
+#     Description: EIP for EC2
+#     Value:
+#       Ref: EIP
 
 
 

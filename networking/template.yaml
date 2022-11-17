@@ -53,7 +53,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.0.0/24
-      AvailabilityZone: us-east-2a
+      AvailabilityZone: us-east-1a
       MapPublicIpOnLaunch: true
       Tags:
       - Key: Application
@@ -71,7 +71,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.1.0/24
-      AvailabilityZone: us-east-2b
+      AvailabilityZone: us-east-1b
       MapPublicIpOnLaunch: true
       Tags:
       - Key: Application
@@ -89,7 +89,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.2.0/24
-      AvailabilityZone: us-east-2a
+      AvailabilityZone: us-east-1a
       Tags:
       - Key: Application
         Value:
@@ -106,7 +106,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.3.0/24
-      AvailabilityZone: us-east-2b
+      AvailabilityZone: us-east-1b
       Tags:
       - Key: Application
         Value:
@@ -123,7 +123,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.4.0/24
-      AvailabilityZone: us-east-2a
+      AvailabilityZone: us-east-1a
       Tags:
       - Key: Application
         Value:
@@ -140,7 +140,7 @@ Resources:
       VpcId:
         Ref: VPC
       CidrBlock: 172.0.5.0/24
-      AvailabilityZone: us-east-2b
+      AvailabilityZone: us-east-1b
       Tags:
       - Key: Application
         Value:
